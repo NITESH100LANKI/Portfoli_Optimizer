@@ -1,47 +1,69 @@
 import pandas as pd
-import pandas_ta as ta
+import numpy as np
 from typing import Dict, List, Tuple
 from app.utils.logger import setup_logger
 
 logger = setup_logger("technical_indicators")
 
 def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """Adds various technical indicators to the dataframe."""
+    """Manual implementation of technical indicators to avoid pandas-ta dependencies."""
     if df.empty:
         return df
     
-    # Ensure dataframe has a datetime index if possible
+    # Ensure dataframe has a datetime index
     df.index = pd.to_datetime(df.index)
+    close = df['Close']
     
-    # Basic technical indicators
-    # Moving Averages
-    df['MA20'] = ta.sma(df['Close'], length=20)
-    df['MA50'] = ta.sma(df['Close'], length=50)
-    df['MA200'] = ta.sma(df['Close'], length=200)
+    # 1. Moving Averages (SMA)
+    df['MA20'] = close.rolling(window=20).mean()
+    df['MA50'] = close.rolling(window=50).mean()
+    df['MA200'] = close.rolling(window=200).mean()
     
-    # RSI
-    df['RSI'] = ta.rsi(df['Close'], length=14)
+    # 2. RSI (14) - Manual calculation
+    delta = close.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['RSI'] = 100 - (100 / (1 + rs))
     
-    # MACD
-    macd = ta.macd(df['Close'])
-    if macd is not None:
-        df = pd.concat([df, macd], axis=1)
+    # 3. MACD (12, 26, 9)
+    exp1 = close.ewm(span=12, adjust=False).mean()
+    exp2 = close.ewm(span=26, adjust=False).mean()
+    df['MACD_12_26_9'] = exp1 - exp2
+    df['MACDs_12_26_9'] = df['MACD_12_26_9'].ewm(span=9, adjust=False).mean()
+    df['MACDh_12_26_9'] = df['MACD_12_26_9'] - df['MACDs_12_26_9']
     
-    # ATR for volatility
-    df['ATR'] = ta.atr(df['High'], df['Low'], df['Close'], length=14)
+    # 4. ATR (14)
+    high_low = df['High'] - df['Low']
+    high_close = np.abs(df['High'] - close.shift())
+    low_close = np.abs(df['Low'] - close.shift())
+    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    df['ATR'] = tr.rolling(window=14).mean()
     
-    # Bollinger Bands
-    bbands = ta.bbands(df['Close'], length=20, std=2)
-    if bbands is not None:
-        df = pd.concat([df, bbands], axis=1)
+    # 5. Bollinger Bands (20, 2)
+    df['BBM_20_2.0'] = close.rolling(window=20).mean()
+    std = close.rolling(window=20).std()
+    df['BBU_20_2.0'] = df['BBM_20_2.0'] + (std * 2)
+    df['BBL_20_2.0'] = df['BBM_20_2.0'] - (std * 2)
         
-    # ADX for Trend Strength
-    adx = ta.adx(df['High'], df['Low'], df['Close'], length=14)
-    if adx is not None:
-        df = pd.concat([df, adx], axis=1)
+    # 6. ADX (14) - Simplified stable version
+    upmove = df['High'].diff()
+    downmove = df['Low'].diff()
+    pos_dm = np.where((upmove > downmove) & (upmove > 0), upmove, 0)
+    neg_dm = np.where((downmove > upmove) & (downmove > 0), downmove, 0)
+    
+    smooth_pos_dm = pd.Series(pos_dm).rolling(14).mean()
+    smooth_neg_dm = pd.Series(neg_dm).rolling(14).mean()
+    
+    tr_sum = tr.rolling(14).sum()
+    di_pos = 100 * (smooth_pos_dm / tr_sum)
+    di_neg = 100 * (smooth_neg_dm / tr_sum)
+    
+    dx = 100 * np.abs(di_pos - di_neg) / (di_pos + di_neg)
+    df['ADX_14'] = dx.rolling(14).mean().values
         
-    # Momentum (Rate of Change)
-    df['Momentum'] = ta.roc(df['Close'], length=10)
+    # 7. Momentum (Rate of Change 10)
+    df['Momentum'] = close.diff(10)
     
     return df
 

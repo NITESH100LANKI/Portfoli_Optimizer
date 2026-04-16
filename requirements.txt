@@ -11,6 +11,5 @@ logzero
 streamlit
 yfinance
 plotly
-pandas-ta
 feedparser
 beautifulsoup4
