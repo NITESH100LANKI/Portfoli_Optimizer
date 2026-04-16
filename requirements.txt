@@ -1,0 +1,16 @@
+pandas
+numpy
+pytest
+scipy
+fastapi
+uvicorn
+smartapi-python
+pyotp
+python-dotenv
+logzero
+streamlit
+yfinance
+plotly
+pandas-ta
+feedparser
+beautifulsoup4

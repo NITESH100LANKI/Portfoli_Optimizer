@@ -1,0 +1,8 @@
+.env
+logs/
+__pycache__/
+*.pyc
+.pytest_cache/
+.streamlit/
+data/*.csv
+!data/sample_data.csv
