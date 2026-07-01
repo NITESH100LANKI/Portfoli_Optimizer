@@ -1,6 +1,11 @@
 import os
-from app.services.portfolio_service import PortfolioService
-from app.utils.logger import setup_logger
+import sys
+
+# Ensure local app directory is in path for imports when running directly
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from services.portfolio_service import PortfolioService
+from utils.logger import setup_logger
 
 logger = setup_logger("main")
 
