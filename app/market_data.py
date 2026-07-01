@@ -20,6 +20,20 @@ NIFTY_50_TICKERS = [
     "APOLLOHOSP.NS", "TATACONSUM.NS", "HEROMOTOCO.NS", "SHRIRAMFIN.NS", "BEL.NS"
 ]
 
+TICKER_SECTOR_MAP = {
+    "RELIANCE.NS": "Energy/Oil & Gas", "ONGC.NS": "Energy/Oil & Gas", "BPCL.NS": "Energy/Oil & Gas", "COALINDIA.NS": "Energy/Oil & Gas",
+    "TCS.NS": "Information Technology", "INFY.NS": "Information Technology", "HCLTECH.NS": "Information Technology", "WIPRO.NS": "Information Technology", "TECHM.NS": "Information Technology",
+    "HDFCBANK.NS": "Financial Services", "ICICIBANK.NS": "Financial Services", "AXISBANK.NS": "Financial Services", "SBIN.NS": "Financial Services", "KOTAKBANK.NS": "Financial Services",
+    "BAJFINANCE.NS": "Financial Services", "BAJAJFINSV.NS": "Financial Services", "INDUSINDBK.NS": "Financial Services", "HDFCLIFE.NS": "Financial Services", "SBILIFE.NS": "Financial Services", "SHRIRAMFIN.NS": "Financial Services",
+    "ITC.NS": "Consumer Goods", "HINDUNILVR.NS": "Consumer Goods", "NESTLEIND.NS": "Consumer Goods", "BRITANNIA.NS": "Consumer Goods", "TATACONSUM.NS": "Consumer Goods", "TITAN.NS": "Consumer Goods", "ASIANPAINT.NS": "Consumer Goods",
+    "MARUTI.NS": "Automobile", "TATAMOTORS.NS": "Automobile", "M&M.NS": "Automobile", "BAJAJ-AUTO.NS": "Automobile", "HEROMOTOCO.NS": "Automobile", "EICHERMOT.NS": "Automobile",
+    "SUNPHARMA.NS": "Healthcare/Pharma", "CIPLA.NS": "Healthcare/Pharma", "DRREDDY.NS": "Healthcare/Pharma", "DIVISLAB.NS": "Healthcare/Pharma", "APOLLOHOSP.NS": "Healthcare/Pharma",
+    "TATASTEEL.NS": "Metals & Mining", "JSWSTEEL.NS": "Metals & Mining", "HINDALCO.NS": "Metals & Mining",
+    "NTPC.NS": "Utilities", "POWERGRID.NS": "Utilities", "ADANIPORTS.NS": "Infrastructure", "ADANIENT.NS": "Infrastructure", "LT.NS": "Capital Goods", "BEL.NS": "Capital Goods",
+    "ULTRACEMCO.NS": "Construction Materials", "GRASIM.NS": "Construction Materials",
+    "BHARTIARTL.NS": "Telecommunication"
+}
+
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def fetch_stock_data(tickers: List[str], period: str = "1y", interval: str = "1d") -> Dict[str, pd.DataFrame]:
     """Fetches historical data for multiple tickers with specified interval."""

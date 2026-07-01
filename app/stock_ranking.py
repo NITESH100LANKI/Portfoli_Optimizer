@@ -4,20 +4,28 @@ from app.utils.logger import setup_logger
 
 logger = setup_logger("stock_ranking")
 
+from app.market_data import TICKER_SECTOR_MAP
+
 def calculate_stock_score(ticker: str, df: pd.DataFrame, news_sentiment: float, config: Dict) -> Dict:
     """
     Calculates a modular score for a stock based on user configuration.
+    Includes performance metrics for Finviz-style display.
     """
     if df.empty or len(df) < 50:
         return {
             "ticker": ticker,
             "total_score": 0, "signal": "N/A", "breakdown": "Insufficient data", 
             "reasons": ["Data history too short for analysis"],
-            "metrics": {"RSI": 0, "Close": 0, "Volume_Surge": 0}
+            "metrics": {"RSI": 0, "Close": 0, "Volume_Surge": 0, "Change": 0},
+            "sector": TICKER_SECTOR_MAP.get(ticker, "Other")
         }
     
     last_row = df.iloc[-1]
+    prev_row = df.iloc[-2]
     reasons = []
+    
+    # Performance
+    pct_change = ((last_row['Close'] - prev_row['Close']) / prev_row['Close']) * 100
     
     # Strategy Tuning
     strategy = config.get('strategy', 'Balanced')
@@ -40,7 +48,7 @@ def calculate_stock_score(ticker: str, df: pd.DataFrame, news_sentiment: float, 
     # 2. Momentum (RSI)
     if feat.get('technical_indicators', True):
         max_possible += 20
-        rsi = last_row['RSI']
+        rsi = last_row.get('RSI', 50)
         # Conservative wants tight 40-65, Aggressive accepts 35-75
         if strategy == 'Conservative':
             if 45 < rsi < 65: mom_score += 20; reasons.append("Stable moderate momentum")
@@ -50,10 +58,10 @@ def calculate_stock_score(ticker: str, df: pd.DataFrame, news_sentiment: float, 
             if 40 < rsi < 70: mom_score += 20; reasons.append("Healthy bullish momentum")
 
     # 3. Volume
+    avg_vol = df['Volume'].tail(20).mean()
+    v_surge = last_row['Volume'] / avg_vol if avg_vol > 0 else 1
     if feat.get('volume_analysis', True):
         max_possible += 20
-        avg_vol = df['Volume'].tail(20).mean()
-        v_surge = last_row['Volume'] / avg_vol
         if v_surge > 1.5: 
             vol_score += 20; reasons.append("Institutional volume surge detected")
         elif v_surge > 1.1:
@@ -83,10 +91,13 @@ def calculate_stock_score(ticker: str, df: pd.DataFrame, news_sentiment: float, 
         "total_score": total_score,
         "signal": signal,
         "reasons": reasons[:3],
+        "sector": TICKER_SECTOR_MAP.get(ticker, "Other"),
         "metrics": {
             "RSI": round(last_row.get('RSI', 0), 2),
             "Close": round(last_row['Close'], 2),
-            "Volume_Surge": round(last_row['Volume'] / df['Volume'].tail(20).mean(), 2) if df['Volume'].tail(20).mean() > 0 else 1
+            "Change": round(pct_change, 2),
+            "Volume": last_row['Volume'],
+            "Volume_Surge": round(v_surge, 2)
         }
     }
 

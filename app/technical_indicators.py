@@ -6,64 +6,82 @@ from app.utils.logger import setup_logger
 logger = setup_logger("technical_indicators")
 
 def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """Manual implementation of technical indicators to avoid pandas-ta dependencies."""
+    """Manual implementation of technical indicators with aggressive 1D safety."""
     if df.empty:
         return df
     
+    # 1. Aggressive Data Cleaning
+    # Remove any duplicate columns and indices that might cause dimension doubling
+    df = df.loc[:, ~df.columns.duplicated()].copy()
+    df = df.loc[~df.index.duplicated(keep='first')].copy()
+    
     # Ensure dataframe has a datetime index
     df.index = pd.to_datetime(df.index)
-    close = df['Close']
+    
+    # helper for safe 1D series
+    def get_1d_array(name):
+        col = df[name]
+        if isinstance(col, pd.DataFrame):
+            col = col.iloc[:, 0]
+        return col.values.flatten()
+
+    close_arr = get_1d_array('Close')
+    high_arr = get_1d_array('High')
+    low_arr = get_1d_array('Low')
     
     # 1. Moving Averages (SMA)
-    df['MA20'] = close.rolling(window=20).mean()
-    df['MA50'] = close.rolling(window=50).mean()
-    df['MA200'] = close.rolling(window=200).mean()
+    df['MA20'] = pd.Series(close_arr, index=df.index).rolling(window=20).mean()
+    df['MA50'] = pd.Series(close_arr, index=df.index).rolling(window=50).mean()
+    df['MA200'] = pd.Series(close_arr, index=df.index).rolling(window=200).mean()
     
-    # 2. RSI (14) - Manual calculation
-    delta = close.diff()
+    # 2. RSI (14)
+    delta = pd.Series(close_arr).diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
+    df['RSI'] = (100 - (100 / (1 + rs))).values
     
     # 3. MACD (12, 26, 9)
-    exp1 = close.ewm(span=12, adjust=False).mean()
-    exp2 = close.ewm(span=26, adjust=False).mean()
+    close_ser = pd.Series(close_arr, index=df.index)
+    exp1 = close_ser.ewm(span=12, adjust=False).mean()
+    exp2 = close_ser.ewm(span=26, adjust=False).mean()
     df['MACD_12_26_9'] = exp1 - exp2
     df['MACDs_12_26_9'] = df['MACD_12_26_9'].ewm(span=9, adjust=False).mean()
     df['MACDh_12_26_9'] = df['MACD_12_26_9'] - df['MACDs_12_26_9']
     
     # 4. ATR (14)
-    high_low = df['High'] - df['Low']
-    high_close = np.abs(df['High'] - close.shift())
-    low_close = np.abs(df['Low'] - close.shift())
-    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-    df['ATR'] = tr.rolling(window=14).mean()
+    tr1 = high_arr - low_arr
+    tr2 = np.abs(high_arr - np.roll(close_arr, 1))
+    tr3 = np.abs(low_arr - np.roll(close_arr, 1))
+    tr = np.maximum(tr1, np.maximum(tr2, tr3))
+    df['ATR'] = pd.Series(tr, index=df.index).rolling(window=14).mean()
     
     # 5. Bollinger Bands (20, 2)
-    df['BBM_20_2.0'] = close.rolling(window=20).mean()
-    std = close.rolling(window=20).std()
-    df['BBU_20_2.0'] = df['BBM_20_2.0'] + (std * 2)
-    df['BBL_20_2.0'] = df['BBM_20_2.0'] - (std * 2)
+    ma20 = pd.Series(close_arr, index=df.index).rolling(window=20).mean()
+    std20 = pd.Series(close_arr, index=df.index).rolling(window=20).std()
+    df['BBM_20_2.0'] = ma20
+    df['BBU_20_2.0'] = ma20 + (std20 * 2)
+    df['BBL_20_2.0'] = ma20 - (std20 * 2)
         
-    # 6. ADX (14) - Simplified stable version
-    upmove = df['High'].diff()
-    downmove = df['Low'].diff()
+    # 6. ADX (14)
+    upmove = np.diff(high_arr, prepend=high_arr[0])
+    downmove = np.diff(low_arr, prepend=low_arr[0])
+    
     pos_dm = np.where((upmove > downmove) & (upmove > 0), upmove, 0)
     neg_dm = np.where((downmove > upmove) & (downmove > 0), downmove, 0)
     
     smooth_pos_dm = pd.Series(pos_dm).rolling(14).mean()
     smooth_neg_dm = pd.Series(neg_dm).rolling(14).mean()
+    tr_sum = pd.Series(tr).rolling(14).sum()
     
-    tr_sum = tr.rolling(14).sum()
     di_pos = 100 * (smooth_pos_dm / tr_sum)
     di_neg = 100 * (smooth_neg_dm / tr_sum)
-    
     dx = 100 * np.abs(di_pos - di_neg) / (di_pos + di_neg)
+    
     df['ADX_14'] = dx.rolling(14).mean().values
         
-    # 7. Momentum (Rate of Change 10)
-    df['Momentum'] = close.diff(10)
+    # 7. Momentum
+    df['Momentum'] = pd.Series(close_arr, index=df.index).diff(10)
     
     return df
 
