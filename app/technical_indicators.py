@@ -180,40 +180,96 @@ def detect_chart_patterns(df: pd.DataFrame):
 
     return patterns
 
-def identify_candlestick_patterns(df: pd.DataFrame) -> Dict[str, List[Dict]]:
-    """Detects major candlestick patterns using TA-Lib."""
-    import talib
-    if len(df) < 5: return {}
+def identify_candlestick_patterns(df: pd.DataFrame) -> List[Dict]:
+    """Detects major candlestick patterns using TA-Lib with a pure Python fallback."""
+    if len(df) < 5: return []
     
+    try:
+        import talib
+        HAS_TALIB = True
+    except (ImportError, ModuleNotFoundError):
+        HAS_TALIB = False
+        logger.warning("TA-Lib is not installed. Using pure-Python candlestick pattern fallback.")
+        
     patterns = []
-    
     O, H, L, C = df['Open'], df['High'], df['Low'], df['Close']
     
-    # 1. Bullish Engulfing
-    eng_bull = talib.CDLENGULFING(O, H, L, C)
-    for idx in eng_bull[eng_bull > 0].index:
-        patterns.append({'x': idx, 'y': H.loc[idx], 'label': '🐂 Bull Engulf', 'type': 'bullish'})
+    if HAS_TALIB:
+        # 1. Bullish Engulfing
+        try:
+            eng_bull = talib.CDLENGULFING(O, H, L, C)
+            for idx in eng_bull[eng_bull > 0].index:
+                patterns.append({'x': idx, 'y': H.loc[idx], 'label': '🐂 Bull Engulf', 'type': 'bullish'})
+                
+            # 2. Bearish Engulfing
+            eng_bear = talib.CDLENGULFING(O, H, L, C)
+            for idx in eng_bear[eng_bear < 0].index:
+                patterns.append({'x': idx, 'y': H.loc[idx], 'label': '🐻 Bear Engulf', 'type': 'bearish'})
+                
+            # 3. Hammer
+            hammer = talib.CDLHAMMER(O, H, L, C)
+            for idx in hammer[hammer > 0].index:
+                patterns.append({'x': idx, 'y': L.loc[idx], 'label': '🔨 Hammer', 'type': 'bullish'})
+                
+            # 4. Shooting Star
+            star = talib.CDLSHOOTINGSTAR(O, H, L, C)
+            for idx in star[star > 0].index:
+                patterns.append({'x': idx, 'y': H.loc[idx], 'label': '⭐ Shooting Star', 'type': 'bearish'})
+                
+            # 5. Morning Star
+            m_star = talib.CDLMORNINGSTAR(O, H, L, C)
+            for idx in m_star[m_star > 0].index:
+                patterns.append({'x': idx, 'y': L.loc[idx], 'label': '🌅 Morning Star', 'type': 'bullish'})
+        except Exception as e:
+            logger.error(f"TA-Lib execution failed, falling back to Python: {e}")
+            HAS_TALIB = False
+            
+    if not HAS_TALIB:
+        # Pure Python Fallback Implementation for basic patterns
+        # Standard definitions using Pandas/Numpy
+        close_s = pd.Series(C)
+        open_s = pd.Series(O)
+        high_s = pd.Series(H)
+        low_s = pd.Series(L)
         
-    # 2. Bearish Engulfing
-    eng_bear = talib.CDLENGULFING(O, H, L, C)
-    for idx in eng_bear[eng_bear < 0].index:
-        patterns.append({'x': idx, 'y': H.loc[idx], 'label': '🐻 Bear Engulf', 'type': 'bearish'})
+        body = (close_s - open_s).abs()
+        is_red = close_s < open_s
+        is_green = close_s > open_s
         
-    # 3. Hammer
-    hammer = talib.CDLHAMMER(O, H, L, C)
-    for idx in hammer[hammer > 0].index:
-        patterns.append({'x': idx, 'y': L.loc[idx], 'label': '🔨 Hammer', 'type': 'bullish'})
+        # We calculate rolling averages for normalization
+        avg_body = body.rolling(14).mean().fillna(body.mean())
         
-    # 4. Shooting Star
-    star = talib.CDLSHOOTINGSTAR(O, H, L, C)
-    for idx in star[star > 0].index:
-        patterns.append({'x': idx, 'y': H.loc[idx], 'label': '⭐ Shooting Star', 'type': 'bearish'})
-        
-    # 5. Morning Star
-    m_star = talib.CDLMORNINGSTAR(O, H, L, C)
-    for idx in m_star[m_star > 0].index:
-        patterns.append({'x': idx, 'y': L.loc[idx], 'label': '🌅 Morning Star', 'type': 'bullish'})
-        
+        for i in range(1, len(df)):
+            idx = df.index[i]
+            
+            # 1 & 2. Bullish & Bearish Engulfing
+            if is_red.iloc[i-1] and is_green.iloc[i]:
+                if open_s.iloc[i] <= close_s.iloc[i-1] and close_s.iloc[i] >= open_s.iloc[i-1]:
+                    if body.iloc[i] > body.iloc[i-1]:
+                        patterns.append({'x': idx, 'y': H.iloc[i], 'label': '🐂 Bull Engulf', 'type': 'bullish'})
+            
+            if is_green.iloc[i-1] and is_red.iloc[i]:
+                if open_s.iloc[i] >= close_s.iloc[i-1] and close_s.iloc[i] <= open_s.iloc[i-1]:
+                    if body.iloc[i] > body.iloc[i-1]:
+                        patterns.append({'x': idx, 'y': H.iloc[i], 'label': '🐻 Bear Engulf', 'type': 'bearish'})
+                        
+            # 3. Hammer
+            lower_shadow = open_s.iloc[i] - low_s.iloc[i] if is_green.iloc[i] else close_s.iloc[i] - low_s.iloc[i]
+            upper_shadow = high_s.iloc[i] - close_s.iloc[i] if is_green.iloc[i] else high_s.iloc[i] - open_s.iloc[i]
+            if lower_shadow >= 2 * body.iloc[i] and upper_shadow <= 0.1 * body.iloc[i] and body.iloc[i] > 0:
+                patterns.append({'x': idx, 'y': L.iloc[i], 'label': '🔨 Hammer', 'type': 'bullish'})
+                
+            # 4. Shooting Star
+            if upper_shadow >= 2 * body.iloc[i] and lower_shadow <= 0.1 * body.iloc[i] and body.iloc[i] > 0:
+                patterns.append({'x': idx, 'y': H.iloc[i], 'label': '⭐ Shooting Star', 'type': 'bearish'})
+                
+            # 5. Morning Star
+            if i >= 2:
+                if is_red.iloc[i-2] and body.iloc[i-2] > avg_body.iloc[i-2]:
+                    if body.iloc[i-1] < avg_body.iloc[i-1] * 0.5:
+                        if is_green.iloc[i] and close_s.iloc[i] > (close_s.iloc[i-2] + open_s.iloc[i-2]) / 2:
+                            patterns.append({'x': idx, 'y': L.iloc[i], 'label': '🌅 Morning Star', 'type': 'bullish'})
+                            
     return patterns
 
 def identify_geometric_patterns(df: pd.DataFrame) -> Dict[str, List[Dict]]:
