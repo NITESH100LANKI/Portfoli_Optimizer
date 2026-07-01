@@ -13,4 +13,4 @@ yfinance
 plotly
 feedparser
 beautifulsoup4
-ta-lib-bin
+
