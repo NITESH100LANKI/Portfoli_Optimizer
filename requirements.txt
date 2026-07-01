@@ -13,3 +13,4 @@ yfinance
 plotly
 feedparser
 beautifulsoup4
+
